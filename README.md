@@ -148,28 +148,29 @@ If you set up scheduling, pick your own cadence when asking Claude to create it 
 
 ## Repository structure
 
-```
-skill/
-  SKILL.md
-.github/
-  workflows/
-    gitleaks.yml
-README.md
-.gitleaks.toml
-.gitignore
-LICENSE
-```
+.
+├── .github/workflows/gitleaks.yml
+├── .gitleaks.toml
+├── .gitignore
+├── LICENSE
+├── README.md
+└── skill/SKILL.md
+
 ## Security notes
 
-This repository is a public template and should include logic only, never live secrets or personal data.
+## Security notes
 
-Safe to publish includes workflow instructions, endpoint patterns, field mappings, and example queries.
+This repo is a public skill template. It should contain logic only, never live secrets or personal data.
 
-Never commit tokens, API keys, `.env` files, private keys, or real candidate data.
+**What is safe to publish:** the skill's instructions, API endpoint patterns, field mappings, and example queries.
 
-Gitleaks is configured in `.github/workflows/gitleaks.yml`.
+**What must not be committed:** GitHub tokens, Claude API keys, `.env` files, private keys, or real candidate data from any run.
 
-Run local checks before pushing.
+Gitleaks runs via `.github/workflows/gitleaks.yml`. Run locally before pushing:
+
+```bash
+gitleaks detect --source . --verbose
+```
 
 ## License
 
