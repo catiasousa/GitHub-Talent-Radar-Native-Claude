@@ -33,15 +33,18 @@ If the user supplies a GitHub personal access token but no device is linked, sav
 
 ## 2. Run the search angles
 
-For each angle the user specified, hit the corresponding endpoint via WebFetch or `device_bash` curl:
+Hugging Face's public Hub API doesn't require authentication for this read-only usage, and — unlike `api.github.com` — is not blocked by the cloud sandbox's egress proxy, so WebFetch works directly for all of these:
 
-- **Location**: `GET /search/users?q=location:"<location>"&sort=followers&order=desc&per_page=50`
-- **Programming language**: GitHub's user-search has no reliable `language:` qualifier — instead `GET /search/repositories?q=language:<lang>&sort=stars&order=desc&per_page=20`, then pull contributors from the top repos, OR search users by a language-associated keyword in bio if the user gives one. Note this workaround to the user.
-- **Repo contributor**: `GET /repos/{owner}/{repo}/contributors?per_page=100&anon=false`
-- **Topic/library**: `GET /search/repositories?q=topic:<topic>&sort=stars&order=desc&per_page=20`, then pull contributors from the top 3-5 matching repos (bound the cost — don't enrich hundreds of people).
-- **Company org**: `GET /orgs/{org}/public_members?per_page=100`
+- **By task**: `GET https://huggingface.co/api/models?pipeline_tag=<task>&sort=downloads&direction=-1&limit=50`
+- **Trending**: `GET https://huggingface.co/api/models?sort=likes7d&direction=-1&limit=50`
+- **By organization**: `GET https://huggingface.co/api/models?author=<org>&sort=downloads&direction=-1&limit=50`
+- **By library**: `GET https://huggingface.co/api/models?library=<lib>&sort=downloads&direction=-1&limit=50`
 
-Merge all results, dedupe by GitHub login (case-insensitive), and record which angle(s) found each person as their `source`.
+Known issue, confirmed in testing: the `pipeline_tag` and `library` filters are unreliable — in practice they've been observed to silently return the same unfiltered trending list regardless of the filter value, rather than actually narrowing results. `author` filtering does work reliably (it's a simple ownership match). Trending works reliably too, since it's unfiltered by design.
+
+Because of this, treat "by task" and "by library" as a hint for hand-filtering, not a working query: pull a broader trending or author-based result set, then manually screen the `pipeline_tag` field on individual entries against the task/library you actually want, using your own judgment rather than trusting the API to have already filtered for you. Tell the user plainly that these two angles are less precise than "by organization" or "trending" in this environment, so they know to sanity-check the candidate list.
+
+Each model result includes an `author` field — that's the candidate's Hugging Face username (or an org name; see step 3). Merge all results, dedupe by author, and record which angle(s) surfaced each person as their `source`. Keep track of each candidate's top-performing model (highest downloads) for enrichment.
 
 ## 3. Filter before enriching
 
@@ -49,7 +52,11 @@ Drop bot accounts (`[bot]` suffix). If the merged list is large (>40 people), pr
 
 ## 4. Enrich
 
-For each remaining candidate: `GET /users/{login}` (name, company, location, bio, blog, followers, public_repos, hireable). When the bio is empty or thin, also check `GET /users/{login}/repos?sort=pushed&per_page=10` (or fetch their `github.com/{login}` profile page via WebFetch, which surfaces pinned repos and richer bio context than the raw API) to find real signal — notable projects created/maintained, primary languages, evidence relevant to the role.
+For each remaining candidate: `GET https://huggingface.co/api/users/<username>/overview` — this returns their model/dataset counts, follower count, and organization memberships. If this 404s, the account is an org, not a person — drop it (per step 3) rather than erroring out.
+
+Best-effort GitHub cross-reference: check `github.com/<username>` directly for a same-handle match (don't use `github.com/search` — it's blocked by robots.txt for WebFetch and will fail outright). A matching username is not enough on its own to call it a match — a same-handle account can be an unrelated placeholder with no real activity. Before treating it as the same person, look for at least one corroborating signal: matching display name, matching technical focus in their bio/pinned repos, or a follower count roughly consistent with their Hugging Face profile. If the GitHub account has near-zero followers/repos while the Hugging Face profile is well-established, that's a sign it's *not* the same person, not a weak-but-real match — say so plainly rather than presenting it as a found profile. Real-world outcome to expect: this will genuinely miss or misfire on a meaningful fraction of candidates, not just occasionally — always label it as inferred and flag low-confidence cases explicitly in the tracker.
+
+GitHub access note: direct calls to `api.github.com` from the cloud sandbox are blocked by a proxy restriction regardless of any token — use WebFetch for GitHub lookups, not Bash/curl. WebFetch hits GitHub's API unauthenticated on a shared IP and can 403 under load; retry once or twice. If the user has linked their computer, GitHub calls can run from there instead for higher, token-backed rate limits. (This restriction does not apply to the Hugging Face API calls above — those work fine from the cloud sandbox.)
 
 ## 5. Exclude people who are already "hired"
 
