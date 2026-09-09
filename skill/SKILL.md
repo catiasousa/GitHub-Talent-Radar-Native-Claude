@@ -51,14 +51,6 @@ Drop bot accounts (`[bot]` suffix). If the merged list is large (>40 people), pr
 
 For each remaining candidate: `GET /users/{login}` (name, company, location, bio, blog, followers, public_repos, hireable). When the bio is empty or thin, also check `GET /users/{login}/repos?sort=pushed&per_page=10` (or fetch their `github.com/{login}` profile page via WebFetch, which surfaces pinned repos and richer bio context than the raw API) to find real signal — notable projects created/maintained, primary languages, evidence relevant to the role.
 
-## 4. Enrich
-
-For each remaining candidate: `GET https://huggingface.co/api/users/<username>/overview` — this returns their model/dataset counts, follower count, and organization memberships. If this 404s, the account is an org, not a person — drop it (per step 3) rather than erroring out.
-
-Best-effort GitHub cross-reference: check `github.com/<username>` directly for a same-handle match (don't use `github.com/search` — it's blocked by robots.txt for WebFetch and will fail outright). A matching username is not enough on its own to call it a match — a same-handle account can be an unrelated placeholder with no real activity. Before treating it as the same person, look for at least one corroborating signal: matching display name, matching technical focus in their bio/pinned repos, or a follower count roughly consistent with their Hugging Face profile. If the GitHub account has near-zero followers/repos while the Hugging Face profile is well-established, that's a sign it's *not* the same person, not a weak-but-real match — say so plainly rather than presenting it as a found profile. Real-world outcome to expect: this will genuinely miss or misfire on a meaningful fraction of candidates, not just occasionally — always label it as inferred and flag low-confidence cases explicitly in the tracker.
-
-GitHub access note: direct calls to `api.github.com` from the cloud sandbox are blocked by a proxy restriction regardless of any token — use WebFetch for GitHub lookups, not Bash/curl. WebFetch hits GitHub's API unauthenticated on a shared IP and can 403 under load; retry once or twice. If the user has linked their computer, GitHub calls can run from there instead for higher, token-backed rate limits. (This restriction does not apply to the Hugging Face API calls above — those work fine from the cloud sandbox.)
-
 ## 5. Exclude people who are already "hired"
 
 Before scoring, check each candidate's `company` field and any org affiliation against: (a) the hiring company itself — they may already work there, (b) the maintaining team of the source repo/project, if a repo-contributor or topic search was used — a top contributor is often a founder or core employee of the project, not an external candidate. Don't silently drop these — mark them `status: "excluded"` with an `exclude_reason` and keep them visible in the tracker's excluded section for transparency.
