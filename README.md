@@ -173,4 +173,4 @@ Run local checks before pushing.
 
 ## License
 
-MIT.
+MIT License. See [LICENSE](LICENSE).
