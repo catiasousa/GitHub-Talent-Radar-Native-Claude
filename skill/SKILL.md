@@ -33,22 +33,23 @@ If the user supplies a GitHub personal access token but no device is linked, sav
 
 ## 2. Run the search angles
 
-Hugging Face's public Hub API doesn't require authentication for this read-only usage, and — unlike `api.github.com` — is not blocked by the cloud sandbox's egress proxy, so WebFetch works directly for all of these:
+For each angle the user specified, hit the corresponding endpoint via WebFetch or `device_bash` curl:
 
-- **By task**: `GET https://huggingface.co/api/models?pipeline_tag=<task>&sort=downloads&direction=-1&limit=50`
-- **Trending**: `GET https://huggingface.co/api/models?sort=likes7d&direction=-1&limit=50`
-- **By organization**: `GET https://huggingface.co/api/models?author=<org>&sort=downloads&direction=-1&limit=50`
-- **By library**: `GET https://huggingface.co/api/models?library=<lib>&sort=downloads&direction=-1&limit=50`
+- **Location**: `GET /search/users?q=location:"<location>"&sort=followers&order=desc&per_page=50`
+- **Programming language**: GitHub's user-search has no reliable `language:` qualifier — instead `GET /search/repositories?q=language:<lang>&sort=stars&order=desc&per_page=20`, then pull contributors from the top repos, OR search users by a language-associated keyword in bio if the user gives one. Note this workaround to the user.
+- **Repo contributor**: `GET /repos/{owner}/{repo}/contributors?per_page=100&anon=false`
+- **Topic/library**: `GET /search/repositories?q=topic:<topic>&sort=stars&order=desc&per_page=20`, then pull contributors from the top 3-5 matching repos (bound the cost — don't enrich hundreds of people).
+- **Company org**: `GET /orgs/{org}/public_members?per_page=100`
 
-Known issue, confirmed in testing: the `pipeline_tag` and `library` filters are unreliable — in practice they've been observed to silently return the same unfiltered trending list regardless of the filter value, rather than actually narrowing results. `author` filtering does work reliably (it's a simple ownership match). Trending works reliably too, since it's unfiltered by design.
-
-Because of this, treat "by task" and "by library" as a hint for hand-filtering, not a working query: pull a broader trending or author-based result set, then manually screen the `pipeline_tag` field on individual entries against the task/library you actually want, using your own judgment rather than trusting the API to have already filtered for you. Tell the user plainly that these two angles are less precise than "by organization" or "trending" in this environment, so they know to sanity-check the candidate list.
-
-Each model result includes an `author` field — that's the candidate's Hugging Face username (or an org name; see step 3). Merge all results, dedupe by author, and record which angle(s) surfaced each person as their `source`. Keep track of each candidate's top-performing model (highest downloads) for enrichment.
+Merge all results, dedupe by GitHub login (case-insensitive), and record which angle(s) found each person as their `source`.
 
 ## 3. Filter before enriching
 
 Drop bot accounts (`[bot]` suffix). If the merged list is large (>40 people), prioritize by whatever signal each angle provides (follower count, contribution count) rather than enriching everyone — enrichment is the expensive step.
+
+## 4. Enrich
+
+For each remaining candidate: `GET /users/{login}` (name, company, location, bio, blog, followers, public_repos, hireable). When the bio is empty or thin, also check `GET /users/{login}/repos?sort=pushed&per_page=10` (or fetch their `github.com/{login}` profile page via WebFetch, which surfaces pinned repos and richer bio context than the raw API) to find real signal — notable projects created/maintained, primary languages, evidence relevant to the role.
 
 ## 4. Enrich
 
